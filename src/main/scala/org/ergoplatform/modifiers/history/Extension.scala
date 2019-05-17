@@ -51,7 +51,6 @@ object Extension extends ApiCodecs {
   //predefined key prefixes
   val SystemParametersPrefix: Byte = 0x00
   val InterlinksVectorPrefix: Byte = 0x01
-  val ValidationRulesPrefix: Byte = 0x02
 
   val FieldValueMaxSize: Int = 64
 

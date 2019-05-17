@@ -7,10 +7,11 @@ import org.ergoplatform.mining.{AutolykosSolution, genPk, q}
 import org.ergoplatform.mining.difficulty.RequiredDifficulty
 import org.ergoplatform.modifiers.history.{ADProofs, Extension, Header}
 import org.ergoplatform.network.ModeFeature
+import org.ergoplatform.nodeView.history.ErgoHistory.Height
 import org.ergoplatform.nodeView.history.ErgoSyncInfo
 import org.ergoplatform.nodeView.mempool.ErgoMemPool
 import org.ergoplatform.nodeView.state.StateType
-import org.ergoplatform.settings.{Constants, ErgoValidationSettings, ValidationRules}
+import org.ergoplatform.settings.{Constants, ErgoValidationSettings, SoftForkParameters, ValidationRules}
 import org.ergoplatform.utils.ErgoTestConstants
 import org.scalacheck.Arbitrary.arbByte
 import org.scalacheck.{Arbitrary, Gen}
@@ -161,6 +162,12 @@ trait ErgoGenerators extends CoreGenerators with Matchers with ErgoTestConstants
     Random.nextBoolean(),
     if (Random.nextBoolean()) Some(popowSuffix) else None,
     blocksToKeep)
+
+  lazy val softForkParametersGen: Gen[SoftForkParameters] = for {
+    startingHeight <- positiveIntGen
+    votesCollected <- positiveIntGen
+    rulesDisabled <- Gen.listOf(Arbitrary.arbitrary[Short])
+  } yield SoftForkParameters(startingHeight, votesCollected, rulesDisabled)
 
   lazy val ergoValidationSettingsGen: Gen[ErgoValidationSettings] = for {
     n <- Gen.choose(1, 200)

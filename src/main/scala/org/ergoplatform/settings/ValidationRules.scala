@@ -4,8 +4,7 @@ import org.ergoplatform.modifiers.ErgoFullBlock
 import org.ergoplatform.modifiers.history.{ADProofs, BlockTransactions, Extension, Header}
 import org.ergoplatform.modifiers.mempool.ErgoTransaction
 import org.ergoplatform.nodeView.history.ErgoHistory
-import org.ergoplatform.settings.ValidationRules.txPositiveAssets
-import scorex.core.validation.{MapValidationSettings, ModifierValidator, ValidationSettings}
+import scorex.core.validation.ModifierValidator
 import scorex.core.validation.ValidationResult.Invalid
 
 object ValidationRules {

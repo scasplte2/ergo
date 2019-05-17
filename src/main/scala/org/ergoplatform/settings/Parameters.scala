@@ -16,8 +16,12 @@ import org.ergoplatform.wallet.protocol.context.ErgoLikeParameters
 
 /**
   * System parameters which could be readjusted via collective miners decision.
+  *
+  * @param height - current blockchain height
+  * @param parametersTable - table of current system parameters
+  * @param softForkParams - status of soft-fork voting
   */
-class Parameters(val height: Height, val parametersTable: Map[Byte, Int])
+class Parameters(val height: Height, val parametersTable: Map[Byte, Int], val softForkParams: Option[SoftForkParameters])
   extends ErgoLikeParameters {
 
   import Parameters._
@@ -62,61 +66,63 @@ class Parameters(val height: Height, val parametersTable: Map[Byte, Int])
     */
   lazy val maxBlockCost: Long = parametersTable(MaxBlockCostIncrease)
 
-  lazy val softForkStartingHeight: Option[Height] = parametersTable.get(SoftForkStartingHeight)
-  lazy val softForkVotesCollected: Option[Int] = parametersTable.get(SoftForkVotesCollected)
+  // TODO remove after refactoring complete
+  lazy val softForkStartingHeight: Option[Height] = softForkParams.map(_.startingHeight)
+  lazy val softForkVotesCollected: Option[Int] = softForkParams.map(_.votesCollected)
 
   lazy val blockVersion: Byte = parametersTable(BlockVersion).toByte
 
   def update(height: Height, forkVote: Boolean, epochVotes: Seq[(Byte, Int)], votingSettings: VotingSettings): Parameters = {
-    val table1 = updateFork(height, parametersTable, forkVote, epochVotes, votingSettings)
-    val table2 = updateParams(table1, epochVotes, votingSettings)
-    Parameters(height, table2)
+    val softForkParams = updateFork(height, forkVote, epochVotes, votingSettings)
+    val updatedTable = updateParams(parametersTable, epochVotes, votingSettings)
+    Parameters(height, updatedTable, softForkParams)
   }
 
 
-  def updateFork(height: Height, parametersTable: Map[Byte, Int], forkVote: Boolean,
-                 epochVotes: Seq[(Byte, Int)], votingSettings: VotingSettings): Map[Byte, Int] = {
+  def updateFork(height: Height, forkVote: Boolean, epochVotes: Seq[(Byte, Int)], votingSettings: VotingSettings): Option[SoftForkParameters] = {
+
+    // TODO
+    val rulesToDeactivate: Seq[Short] = Seq()
 
     import votingSettings.{activationEpochs, softForkApproved, softForkEpochs => votingEpochs, votingLength => votingEpochLength}
 
     lazy val votesInPrevEpoch = epochVotes.find(_._1 == SoftFork).map(_._2).getOrElse(0)
-    lazy val votes = votesInPrevEpoch + parametersTable(SoftForkVotesCollected)
-    var table = parametersTable
+    lazy val votes = votesInPrevEpoch + softForkParams.map(_.votesCollected).getOrElse(0)
 
     //successful voting - cleaning after activation
     if (softForkStartingHeight.nonEmpty
       && height == softForkStartingHeight.get + votingEpochLength * (votingEpochs + activationEpochs + 1)
       && softForkApproved(votes)) {
-      table = table.-(SoftForkStartingHeight).-(SoftForkVotesCollected)
-    }
-    //unsuccessful voting - cleaning
-    if (softForkStartingHeight.nonEmpty
+      None
+    } else if (softForkStartingHeight.nonEmpty
+      //unsuccessful voting - cleaning
       && height == softForkStartingHeight.get + votingEpochLength * (votingEpochs + 1)
       && !softForkApproved(votes)) {
-      table = table.-(SoftForkStartingHeight).-(SoftForkVotesCollected)
-    }
-    //new voting
-    if (forkVote &&
+      None
+    } else if (forkVote &&
       ((softForkStartingHeight.isEmpty && height % votingEpochLength == 0) ||
         (softForkStartingHeight.nonEmpty &&
           height == softForkStartingHeight.get + (votingEpochLength * (votingEpochs + activationEpochs + 1))) ||
         (softForkStartingHeight.nonEmpty &&
           height == softForkStartingHeight.get + (votingEpochLength * (votingEpochs + 1)) &&
           !softForkApproved(votes)))) {
-      table = table.updated(SoftForkStartingHeight, height).updated(SoftForkVotesCollected, 0)
-    }
-    //new epoch in voting
-    if (softForkStartingHeight.nonEmpty
+      // new voting
+      //      table = table.updated(SoftForkStartingHeight, height).updated(SoftForkVotesCollected, 0)
+      Some(SoftForkParameters(height, 0, rulesToDeactivate))
+    } else if (softForkStartingHeight.nonEmpty
       && height <= softForkStartingHeight.get + votingEpochLength * votingEpochs) {
-      table = table.updated(SoftForkVotesCollected, votes)
-    }
-    //successful voting - activation
-    if (softForkStartingHeight.nonEmpty
+      //new epoch in voting
+      //      table = table.updated(SoftForkVotesCollected, votes)
+      softForkParams.map(sf => sf.copy(votesCollected = votes))
+    } else if (softForkStartingHeight.nonEmpty
       && height == softForkStartingHeight.get + votingEpochLength * (votingEpochs + activationEpochs)
       && softForkApproved(votes)) {
-      table = table.updated(BlockVersion, table(BlockVersion) + 1)
+      //      table = table.updated(BlockVersion, table(BlockVersion) + 1)
+      //successful voting - activation
+      ???
+    } else {
+      None
     }
-    table
   }
 
   //Update non-fork parameters
@@ -203,8 +209,7 @@ class Parameters(val height: Height, val parametersTable: Map[Byte, Int])
 object Parameters {
 
   val SoftFork: Byte = 120
-  val SoftForkVotesCollected: Byte = 121
-  val SoftForkStartingHeight: Byte = 122
+  val SoftForkStatusKey: Array[Byte] = Array(Extension.SystemParametersPrefix, 121.toByte)
   val BlockVersion: Byte = 123
 
   //A vote for nothing
@@ -284,20 +289,26 @@ object Parameters {
 
   val ParamVotesCount = 2
 
-  def apply(h: Height, paramsTable: Map[Byte, Int]): Parameters = new Parameters(h, paramsTable)
+  def apply(h: Height, paramsTable: Map[Byte, Int], softForkParams: Option[SoftForkParameters]): Parameters = {
+    new Parameters(h, paramsTable, softForkParams)
+  }
 
   def parseExtension(h: Height, extension: Extension): Try[Parameters] = Try {
     val paramsTable = extension.fields.flatMap { case (k, v) =>
       require(k.length == 2, s"Wrong key during parameters parsing in extension: $extension")
-      if (k.head == 0) {
+      if (k.head == Extension.SystemParametersPrefix) {
         require(v.length == 4, s"Wrong value during parameters parsing in extension: $extension")
         Some(k.last -> Ints.fromByteArray(v))
       } else {
         None
       }
     }.toMap
+    val sf: Option[SoftForkParameters] = extension.fields
+      .find(f => java.util.Arrays.equals(f._1, SoftForkStatusKey))
+      .map(_._2)
+      .map(sfBytes => SoftForkParametersSerializer.parseBytes(sfBytes))
     require(paramsTable.nonEmpty, s"Parameters table is empty in extension: $extension")
-    Parameters(h, paramsTable)
+    Parameters(h, paramsTable, sf)
   }
 
   /**
@@ -332,15 +343,32 @@ object ParametersSerializer extends ScorexSerializer[Parameters] with ApiCodecs 
       w.put(k)
       w.putInt(v)
     }
+    if (params.softForkParams.isDefined) w.put(1.toByte) else w.put(0.toByte)
+    params.softForkParams.foreach { p =>
+      w.putInt(p.startingHeight)
+      w.putInt(p.votesCollected)
+      w.putInt(p.rulesDisabled.length)
+      p.rulesDisabled.foreach(r => w.putShort(r))
+    }
   }
 
   override def parse(r: Reader): Parameters = {
     val height = r.getUInt().toIntExact
     val tableLength = r.getUInt().toIntExact
-    val table = (0 until tableLength).map {_ =>
+    val table = (0 until tableLength).map { _ =>
       r.getByte() -> r.getInt()
     }
-    Parameters(height, table.toMap)
+    val sfIsDefined = r.getByte() == 1.toByte
+    val sf = if (sfIsDefined) {
+      val startingHeight = r.getInt()
+      val votesCollected = r.getInt()
+      val rulesDisabledLength = r.getInt()
+      val rulesDisabled = (0 until rulesDisabledLength).map(_ => r.getShort())
+      Some(SoftForkParameters(startingHeight, votesCollected, rulesDisabled))
+    } else {
+      None
+    }
+    Parameters(height, table.toMap, sf)
   }
 
   implicit val jsonEncoder: Encoder[Parameters] = { p: Parameters =>

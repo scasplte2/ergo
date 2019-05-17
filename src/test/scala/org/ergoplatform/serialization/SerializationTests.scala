@@ -5,7 +5,7 @@ import org.ergoplatform.modifiers.history._
 import org.ergoplatform.modifiers.mempool.{ErgoBoxSerializer, ErgoTransactionSerializer}
 import org.ergoplatform.nodeView.history.ErgoSyncInfoSerializer
 import org.ergoplatform.nodeView.state.{ErgoStateContext, ErgoStateContextSerializer}
-import org.ergoplatform.settings.{Constants, ErgoValidationSettingsSerializer}
+import org.ergoplatform.settings.{Constants, ErgoValidationSettingsSerializer, SoftForkParametersSerializer}
 import org.ergoplatform.utils.ErgoPropertyTest
 import org.scalacheck.Gen
 import org.scalatest.Assertion
@@ -88,5 +88,13 @@ class SerializationTests extends ErgoPropertyTest with scorex.testkit.Serializat
       serializer.parseBytes(serializer.toBytes(mf)) shouldEqual mf
     }
   }
+
+  property("SoftForkParameters serialization") {
+    val serializer = SoftForkParametersSerializer
+    forAll(softForkParametersGen) { mf =>
+      serializer.parseBytes(serializer.toBytes(mf)) shouldEqual mf
+    }
+  }
+
 
 }
