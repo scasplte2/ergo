@@ -542,8 +542,8 @@ object ErgoMinerRef {
             viewHolderRef: ActorRef,
             readersHolderRef: ActorRef,
             timeProvider: NetworkTimeProvider,
-            skOpt: Option[DLogProverInput] = None)
+            skOpt: Option[DLogProverInput] = None,
+            name: String = "miner")
            (implicit context: ActorRefFactory): ActorRef =
-    context.actorOf(props(ergoSettings, viewHolderRef, readersHolderRef, timeProvider, skOpt))
-
+    context.actorOf(props(ergoSettings, viewHolderRef, readersHolderRef, timeProvider, skOpt), name)
 }

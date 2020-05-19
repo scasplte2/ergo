@@ -30,6 +30,8 @@ import scala.concurrent.{Await, ExecutionContext}
 import scala.io.Source
 import scala.util.{Failure, Success}
 
+import kamon.Kamon
+
 class ErgoApp(args: Args) extends ScorexLogging {
 
   private var ergoSettings: ErgoSettings = ErgoSettings.read(args)
@@ -97,29 +99,29 @@ class ErgoApp(args: Args) extends ScorexLogging {
     externalNodeAddress = externalSocketAddress
   )
 
-  private val peerManagerRef = PeerManagerRef(settings, scorexContext)
+  private val peerManagerRef = PeerManagerRef("peerManager", settings, scorexContext)
 
   private val networkControllerRef: ActorRef = NetworkControllerRef(
     "networkController", settings.network, peerManagerRef, scorexContext)
 
-  private val nodeViewHolderRef: ActorRef = ErgoNodeViewRef(ergoSettings, timeProvider)
+  private val nodeViewHolderRef: ActorRef = ErgoNodeViewRef(ergoSettings, timeProvider, "nodeViewHolder")
 
-  private val readersHolderRef: ActorRef = ErgoReadersHolderRef(nodeViewHolderRef)
+  private val readersHolderRef: ActorRef = ErgoReadersHolderRef(nodeViewHolderRef, "readerHolder")
 
   // Create an instance of ErgoMiner actor if "mining = true" in config
   private val minerRefOpt: Option[ActorRef] =
     if (ergoSettings.nodeSettings.mining) {
-      Some(ErgoMinerRef(ergoSettings, nodeViewHolderRef, readersHolderRef, timeProvider))
+      Some(ErgoMinerRef(ergoSettings, nodeViewHolderRef, readersHolderRef, timeProvider, name = "miner"))
     } else {
       None
     }
 
   private val statsCollectorRef: ActorRef =
-    ErgoStatsCollectorRef(readersHolderRef, networkControllerRef, ergoSettings, timeProvider)
+    ErgoStatsCollectorRef(readersHolderRef, networkControllerRef, ergoSettings, timeProvider, "statsCollector")
 
   private val nodeViewSynchronizer: ActorRef =
     ErgoNodeViewSynchronizer(networkControllerRef, nodeViewHolderRef, ErgoSyncInfoMessageSpec,
-      settings.network, timeProvider)
+      settings.network, timeProvider, "nodeViewSynchronizer")
 
   private val apiRoutes: Seq[ApiRoute] = Seq(
     EmissionApiRoute(ergoSettings),
@@ -203,6 +205,7 @@ class ErgoApp(args: Args) extends ScorexLogging {
 }
 
 object ErgoApp extends ScorexLogging {
+  Kamon.init()
 
   import com.joefkelley.argyle._
 

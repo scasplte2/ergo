@@ -255,4 +255,8 @@ object ErgoNodeViewRef {
   def apply(settings: ErgoSettings,
             timeProvider: NetworkTimeProvider)(implicit system: ActorSystem): ActorRef =
     system.actorOf(props(settings, timeProvider))
+
+  def apply(settings: ErgoSettings,
+            timeProvider: NetworkTimeProvider, name: String)(implicit system: ActorSystem): ActorRef =
+    system.actorOf(props(settings, timeProvider), name)
 }
